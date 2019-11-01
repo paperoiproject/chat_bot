@@ -1,5 +1,6 @@
 import azure.cognitiveservices.speech as speechsdk
 import configparser
+from janome.tokenizer import Tokenizer
 import json
 import pypapero
 import sys
@@ -7,10 +8,23 @@ import time
 import urllib.request as urllib_req
 import urllib.parse as urllib_p
 
-# シミュレーターID
-simulator_id = "2crk9ymk"
+
+# シミュレータ / 実機 の指定
+# 切り替え方
+# """ シミュレータ or #""" シミュレータ
+
+#""" シミュレータ
+
+simulator_id = "n3qy1yit"
 robot_name = ""
 ws_server_addr = ""
+
+""" #実機
+
+simulator_id = ""
+robot_name = ""
+ws_server_addr = "ws://192.168.1.1:8088/papero"
+#"""
 
 # 設定ファイルを読み込む
 inifile = configparser.ConfigParser()
@@ -20,9 +34,10 @@ inifile.read('./property.ini', 'UTF-8')
 参考
 https://github.com/Azure-Samples/cognitive-services-speech-sdk/blob/master/samples/python/console/speech_sample.py
 '''
+# 音声認識
 def speech_recognize_keyword_from_microphone():
-    WAKE_WORD = "assistant"
-    WAKE_WORD_MODEL = "./kws.table"
+    WAKE_WORD = "O K PaPeRo"
+    WAKE_WORD_MODEL = "./kws_(hey_papero).table"
 
     # 設定ファイルから読み込み
     speech_key = inifile.get('speech_config', 'speech_key1')
@@ -84,12 +99,13 @@ def speech_recognize_keyword_from_microphone():
 
     # キーワード認識を開始
     speech_recognizer.start_keyword_recognition(model)
-    print('"{}" と呼びかけ、続けて何かおっしゃってください（英語は苦手）'.format(keyword))
+    print('"{}" と呼びかけ、続けて何かおっしゃってください（英語は理解りません）'.format(keyword))
     while not done:
         time.sleep(.5)
 
-    return text.replace('アシスタント', '').replace('。', '')
+    return text#.replace('ｓ', '').replace('。', '')
 
+# 形態素解析（旧）　使用しない
 def post_morphological_api(sentence):
     # 設定ファイルから読み込み
     morphological_api = inifile.get('morphological', 'morphological_api')
@@ -114,6 +130,19 @@ def post_morphological_api(sentence):
             text += item[0] + " "
         return text
 
+# 形態素解析
+def post_morphological_janome(sentence):
+    t = Tokenizer(wakati=True)
+
+    text_to_morpheme = ""
+    for token in t.tokenize(sentence):
+        text_to_morpheme = text_to_morpheme + token + " "
+
+    print("Janome↓")
+    print(text_to_morpheme)
+    print("\n")
+    return text_to_morpheme
+
 def get_tag_from_wit(text):
     # 設定ファイルから読み込み
     client_access_token = inifile.get('tag_from_wit', 'client_access_token')
@@ -136,66 +165,75 @@ def get_tag_from_wit(text):
         json_str = response.read().decode('unicode-escape')
     return str(json_str)
 
+def papero_control_func(json_obj):
+    #print("wit.ai↓")
+    #print(json.dumps(json_obj, ensure_ascii=False, indent=2))
+    #print("\n")
+
+    if 'recommend' in json_obj['entities']:
+        if 'item' in json_obj['entities']:
+            if 'what' in json_obj['entities']:
+                text = "{}な{}はカレーパンだよ".format(
+                    json_obj['entities']['recommend'][0]['value'],
+                    json_obj['entities']['item'][0]['value'])
+
+    if 'popular' in json_obj['entities']:
+        if 'item' in json_obj['entities']:
+            if 'what' in json_obj['entities']:
+                text = "{}な{}はアンパンだよ".format(
+                    json_obj['entities']['popular'][0]['value'],
+                    json_obj['entities']['item'][0]['value'])
+
+    if 'yourself' in json_obj['entities']:
+        if 'name' in json_obj['entities']:
+            if 'what' in json_obj['entities']:
+                text = "ぼくの{}はパペロだよ".format(
+                    json_obj['entities']['name'][0]['value']
+                    )
+
+    if 'greeting' in json_obj['entities']:
+                text = "{}".format(
+                    json_obj['entities']['greeting'][0]['value']
+                    )
+
+    if 'yoroshiku' in json_obj['entities']:
+                text = "こちらこそよろしくお願いいたします"
+
+    if 'asks' in json_obj['entities']:
+                text = "はい、なんですか？"
+
+    if 'first' in json_obj['entities']:
+                text = "初めまして、お会いできてうれしいです"
+
+    if text == "":
+        text = "申し訳ございません、よくわかりませんでした。"
+
+    papero_operating_func(text)
+
 def papero_operating_func(text):
     # Paperoオブジェクトを生成、指定されたテキストを発話し終了
     papero = pypapero.Papero(simulator_id, robot_name, ws_server_addr)
     papero.send_start_speech(text)
     print(text)
-    sys.exit()
 
-speech_to_text = speech_recognize_keyword_from_microphone()
+try:
+    while True:
+        time.sleep(1)
+        speech_to_text = speech_recognize_keyword_from_microphone()
 
-if not speech_to_text:
-    print("呼びかけ後すぐに発話してください")
-    sys.exit()
+        if not speech_to_text:
+            print("呼びかけ後すぐに発話してください")
+            sys.exit()
 
-text_to_morpheme = post_morphological_api(speech_to_text)
-json_str = get_tag_from_wit(text_to_morpheme)
+        print("認識しました。\n変換中...\n")
 
-json_obj = json.loads(json_str)
-print(json.dumps(json_obj, ensure_ascii=False, indent=2))
+        text_to_morpheme = post_morphological_janome(speech_to_text)
 
-if 'recommend' in json_obj['entities']:
-    if 'item' in json_obj['entities']:
-        if 'what' in json_obj['entities']:
-            text = "{}な{}はカレーパンだよ".format(
-                json_obj['entities']['recommend'][0]['value'],
-                json_obj['entities']['item'][0]['value'])
-            papero_operating_func(text)
+        json_str = get_tag_from_wit(text_to_morpheme)
 
-if 'popular' in json_obj['entities']:
-    if 'item' in json_obj['entities']:
-        if 'what' in json_obj['entities']:
-            text = "{}な{}はアンパンだよ".format(
-                json_obj['entities']['popular'][0]['value'],
-                json_obj['entities']['item'][0]['value'])
-            papero_operating_func(text)
+        json_obj = json.loads(json_str)
 
-if 'yourself' in json_obj['entities']:
-    if 'name' in json_obj['entities']:
-        if 'what' in json_obj['entities']:
-            text = "ぼくの{}はパペロだよ".format(
-                json_obj['entities']['name'][0]['value']
-                )
-            papero_operating_func(text)
+        papero_control_func(json_obj)
 
-if 'greeting' in json_obj['entities']:
-            text = "{}".format(
-                json_obj['entities']['greeting'][0]['value']
-                )
-            papero_operating_func(text)
-
-if 'yoroshiku' in json_obj['entities']:
-            text = "こちらこそよろしくお願いいたします"
-            papero_operating_func(text)
-
-if 'asks' in json_obj['entities']:
-            text = "はい、なんですか？"
-            papero_operating_func(text)
-
-if 'first' in json_obj['entities']:
-            text = "初めまして、お会いできてうれしいです"
-            papero_operating_func(text)
-
-text = "申し訳ございません、よくわかりませんでした。精進してまいります。"
-papero_operating_func(text)
+except KeyboardInterrupt:
+    print("終了")
