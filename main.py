@@ -15,7 +15,7 @@ import urllib.parse as urllib_p
 
 #""" シミュレータ
 
-simulator_id = "n3qy1yit"
+simulator_id = "9c77gre3"
 robot_name = ""
 ws_server_addr = ""
 
@@ -36,8 +36,8 @@ https://github.com/Azure-Samples/cognitive-services-speech-sdk/blob/master/sampl
 '''
 # 音声認識
 def speech_recognize_keyword_from_microphone():
-    WAKE_WORD = "O K PaPeRo"
-    WAKE_WORD_MODEL = "./kws_(hey_papero).table"
+    WAKE_WORD = "assistant"
+    WAKE_WORD_MODEL = "./kws_assistant.table"
 
     # 設定ファイルから読み込み
     speech_key = inifile.get('speech_config', 'speech_key1')
