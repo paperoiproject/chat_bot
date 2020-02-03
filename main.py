@@ -10,18 +10,21 @@ import urllib.parse as urllib_p
 from tuning import Tuning
 import usb.core
 import usb.util
+import ssl
+context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+context.verify_mode = ssl.CERT_NONE
 
 # シミュレータ / 実機 の指定
 # 切り替え方
 # """ シミュレータ or #""" シミュレータ
 
-# """ シミュレータ
+""" シミュレータ
 
-simulator_id = "9c77gre3"
-robot_name = ""
-ws_server_addr = ""
+   simulator_id = "7a2musbo"
+   robot_name = ""
+   ws_server_addr = ""
 
-""" #実機
+   """  # 実機
 
 simulator_id = ""
 robot_name = ""
@@ -103,7 +106,7 @@ def speech_recognize_keyword_from_microphone(mictuning):
         dire = mictuning.direction
         time.sleep(.5)
 
-    return text, dire
+    return text.replace('アシスタント', ''), dire
 
 
 # 形態素解析
@@ -144,49 +147,32 @@ def get_tag_from_wit(text):
 
 
 def papero_control_func(json_obj, dire):
-    # print("wit.ai↓")
-    # print(json.dumps(json_obj, ensure_ascii=False, indent=2))
-    # print("\n")
+    if 'yourself' in json_obj['entities']:
+        text = "ぼくはパペロだよ。よろしくね。"
+        json_post(text, dire)
+        #papero_operating_func(text, dire)
+        return
 
     if 'recommend' in json_obj['entities']:
         if 'item' in json_obj['entities']:
-            if 'what' in json_obj['entities']:
-                text = "{}な{}はカレーパンだよ".format(
-                    json_obj['entities']['recommend'][0]['value'],
-                    json_obj['entities']['item'][0]['value'])
+            if 'query' in json_obj['entities']:
+                text = "オススメのパンはカレーパンだよ"
+                json_post(text, dire)
+                #papero_operating_func(text, dire)
+                return
 
     if 'popular' in json_obj['entities']:
         if 'item' in json_obj['entities']:
-            if 'what' in json_obj['entities']:
-                text = "{}な{}はアンパンだよ".format(
-                    json_obj['entities']['popular'][0]['value'],
-                    json_obj['entities']['item'][0]['value'])
+            if 'query' in json_obj['entities']:
+                text = "人気なパンはアンパンだよ"
+                json_post(text, dire)
+                #papero_operating_func(text, dire)
+                return
 
-    if 'yourself' in json_obj['entities']:
-        if 'name' in json_obj['entities']:
-            if 'what' in json_obj['entities']:
-                text = "ぼくの{}はパペロだよ".format(
-                    json_obj['entities']['name'][0]['value']
-                )
+    text = "申し訳ございません、よくわかりませんでした。"
 
-    if 'greeting' in json_obj['entities']:
-        text = "{}".format(
-            json_obj['entities']['greeting'][0]['value']
-        )
-
-    if 'yoroshiku' in json_obj['entities']:
-        text = "こちらこそよろしくお願いいたします"
-
-    if 'asks' in json_obj['entities']:
-        text = "はい、なんですか？"
-
-    if 'first' in json_obj['entities']:
-        text = "初めまして、お会いできてうれしいです"
-
-    if text == "":
-        text = "申し訳ございません、よくわかりませんでした。"
-
-    papero_operating_func(text, dire)
+    json_post(text, dire)
+    #papero_operating_func(text, dire)
 
 
 def papero_operating_func(text, dire):
@@ -205,6 +191,29 @@ def papero_operating_func(text, dire):
     print(text)
 
 
+def json_post(text, dire):
+    if dire >= 180:
+        dire = dire - 360
+    if dire >= 80:
+        dire = 80
+    if dire <= -80:
+        dire = -80
+    url = "https://10.70.84.77:443/chat/test"
+    method = "POST"
+    headers = {"Content-Type": "application/json"}
+
+    # PythonオブジェクトをJSONに変換する
+    obj = {"chat_text": text, "direction": str(dire)}
+    json_data = json.dumps(obj).encode("utf-8")
+
+    # httpリクエストを準備してPOST
+    request = urllib_req.Request(
+        url, data=json_data, method=method, headers=headers)
+    with urllib_req.urlopen(request, context=context) as response:
+        response_body = response.read().decode("utf-8")
+        print(response_body)
+
+
 try:
     # ReSpearker Mic Array v2.0に接続
     dev = usb.core.find(idVendor=0x2886, idProduct=0x0018)
@@ -212,6 +221,7 @@ try:
         Mic_tuning = Tuning(dev)
         while True:
             time.sleep(1)
+
             speech_to_text, dire = speech_recognize_keyword_from_microphone(
                 Mic_tuning)
 
@@ -228,6 +238,7 @@ try:
             json_obj = json.loads(json_str)
 
             papero_control_func(json_obj, dire)
+
     else:
         print("ReSpearker Mic Array v2.0が見つかりません。")
         sys.exit()
